@@ -60,10 +60,31 @@ def deserialize_list(list):
 # Handler for the "/start" command
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
-               InlineKeyboardButton('Learner', callback_data='learner'))
-    msg = bot.send_message(message.chat.id, "Welcome to Learing Stations @ Dyuksha '23 hosted TinkerHub NSSCE! I'm BB8 you're learning assistant. So are you a mentor or a learner?", reply_markup=markup)
+    try:
+        participant_data = get_participant_data(message.from_user.id)['fields']
+        visited_list = deserialize_list(participant_data['visited'])
+        if participant_data['type'] in mentor_passcodes:
+            bot.send_message(message.chat.id, f'''You have already completed registration as a *Mentor* 🧑‍🏫
+
+*Here are your details:*
+_Name: {participant_data['name']}_
+_Station name: {participant_data['type'].capitalize()}_
+
+If you want to move to a different station, you can run /cleardata command to clear your current data from the database.''')
+        elif participant_data['type'] == 'learner':
+            bot.send_message(message.chat.id, f'''You have already completed registration as a *Learner* 🧑‍🎓
+
+*Here are your details:*
+_Name: {participant_data['name']}_
+_Email: {participant_data['email']}_
+_No. of stations visited: {len(visited_list)}_
+
+If you wish to change any of your details, you can run /cleardata _(clears all your current data including your progress from our database)_ and then rerun the /start command''')
+    except:
+        markup = InlineKeyboardMarkup()
+        markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
+                InlineKeyboardButton('Learner', callback_data='learner'))
+        msg = bot.send_message(message.chat.id, "Welcome to Learing Stations @ Dyuksha '23 hosted TinkerHub NSSCE! I'm BB8 you're learning assistant. So are you a mentor or a learner?", reply_markup=markup)
 
 @bot.message_handler(commands=['visited'])
 def visited_station(message):
@@ -76,18 +97,21 @@ def visited_station(message):
                 record_id = get_record_id(message.from_user.id)
                 learner_data = get_participant_data(message.from_user.id)['fields']
                 visited_list = deserialize_list(learner_data['visited'])
-                if station_name not in visited_list:
-                    visited_list.append(station_name)
-                    update_visited(str(visited_list), record_id)
-                    if len(visited_list) < 10:
-                        bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁. {10 - len(visited_list)} stations left..")
+                if learner_data['type'] == 'learner':
+                    if station_name not in visited_list:
+                        visited_list.append(station_name)
+                        update_visited(str(visited_list), record_id)
+                        if len(visited_list) < 10:
+                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁. {10 - len(visited_list)} stations left..")
+                        else:
+                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁.")
+                            bot.send_message(message.chat.id, f"Congratulations, you've visited all our stations 🎉. Here's a token of appreciation for your efforts!")
                     else:
-                        bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁.")
-                        bot.send_message(message.chat.id, f"Congratulations, you've visited all our stations 🎉. Here's a token of appreciation for your efforts!")
+                        bot.send_message(message.chat.id, f"You've already visited the {station_name} station 👀. Please visit a different station.")
                 else:
-                    bot.send_message(message.chat.id, f"You've already visited the {station_name} station 👀. Please visit a different station.")
+                    bot.send_message(message.chat.id, "You need to be a *Learner* 🎓 to run this command!")
             except Exception as e:
-                bot.send_message(message.chat.id, "You need to register as a learner 🎓 to use the /visited command. Use the /start command to register first.")
+                bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to use the /visited command. Use the /start command to register first.")
         else:
             bot.send_message(message.chat.id, "Invalid visitor code ❌ Please ask your mentor for a valid one!")
     else:
