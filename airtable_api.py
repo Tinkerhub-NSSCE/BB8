@@ -5,7 +5,7 @@ from pyairtable.formulas import match
 
 directory = os.path.dirname(os.path.realpath(__file__))
 config = configparser.ConfigParser()
-config.read(f"{directory}/config.ini")
+config.read(f'{directory}/config.ini')
 
 api_key = str(config.get("airtable", "api_key"))
 base_id = str(config.get("airtable", "base_id"))

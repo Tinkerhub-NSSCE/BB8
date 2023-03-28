@@ -9,6 +9,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedia
 from dotenv import load_dotenv
 from airtable_api import *
 from io import BytesIO
+from configparser import ConfigParser
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -16,20 +17,28 @@ TOKEN = os.getenv('TOKEN')
 # Initialize the bot with your token
 bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=10)
 
-mentor_passcodes = {'python':'L3ARN5TAT10N_PYTHON',
-                    'web':'L3ARN5TAT10N_WEB',
-                    'mobile':'L3ARN5TAT10N_MOBILE',
-                    'blockchain':'L3ARN5TAT10N_BLOCKCHAIN',
-                    'ai':'L3ARN5TAT10N_AI',
-                    'resume':'L3ARN5TAT10N_RESUME',
-                    'iot':'L3ARN5TAT10N_IOT',
-                    'pcb':'L3ARN5TAT10N_PCB',
-                    '3d':'L3ARN5TAT10N_3D',
-                    'gdsc':'L3ARN5TAT10N_GDSC'}
+directory = os.path.dirname(os.path.realpath(__file__))
+config = ConfigParser()
+config.read(f'{directory}/config.ini')
+
+mentor_passcodes = {'python':'',
+                    'web':'',
+                    'mobile':'',
+                    'blockchain':'',
+                    'ai':'',
+                    'resume':'',
+                    'iot':'',
+                    'pcb':'',
+                    '3d':'',
+                    'gdsc':''}
+
+for station_name in mentor_passcodes:
+    mentor_passcodes[station_name] = str(config.get('bot', station_name))
 
 visitor_codes = {}
 last_seen_chat_id = {}
 last_seen_message = {}
+last_mentor_request = {}
 
 def randomise_visitor_codes():
     global visitor_codes
@@ -178,12 +187,12 @@ def process_passcode(message):
     global last_seen_message, last_seen_chat_id
     passcode = message.text
     if passcode in mentor_passcodes.values():
+        bot.delete_message(message.chat.id, message.message_id)
         mentor_name = message.from_user.first_name
         mentor_tu_id = message.from_user.id
         for key in mentor_passcodes.keys():
             if mentor_passcodes[key] == passcode:
                 station_name = key
-
         add_new_record(mentor_name, station_name, str(mentor_tu_id))
         code = visitor_codes[station_name]
         qr_img = generate_qr(code)
@@ -194,10 +203,17 @@ def process_passcode(message):
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
         bot.send_photo(message.chat.id, qr_img, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes", reply_markup=markup)
+        if message.from_user.id in last_mentor_request:
+            last_mentor_request.pop(message.from_user.id)
         if message.from_user.id in last_seen_chat_id:
             bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
             last_seen_message.pop(message.from_user.id)
             last_seen_chat_id.pop(message.from_user.id)
+    else:
+        bot.send_message(message.chat.id, "Invalid passcode ❌, please try again. If you are not a *Mentor*, run /start again and select *Learner* option.")
+        if message.from_user.id in last_mentor_request:
+            bot.delete_message(last_mentor_request[message.from_user.id][0], last_mentor_request[message.from_user.id][1])
+            last_mentor_request.pop(message.from_user.id)
 
 def process_name(message):
     name = message.text
@@ -221,13 +237,14 @@ def process_email(message, name):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
-    global last_seen_chat_id, last_seen_chat_id
+    global last_seen_chat_id, last_seen_chat_id, last_mentor_request
     if call.data == 'mentor':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter the passcode:', reply_markup=markup)
         last_seen_chat_id[call.from_user.id] = call.message.chat.id
         last_seen_message[call.from_user.id] = call.message.message_id
+        last_mentor_request[call.from_user.id] = [call.message.chat.id, call.message.message_id]
         bot.register_next_step_handler(msg, process_passcode)
     elif call.data == 'learner':
         markup = InlineKeyboardMarkup()
