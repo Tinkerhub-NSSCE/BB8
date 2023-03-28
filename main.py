@@ -26,6 +26,7 @@ mentor_passcodes = {'python':'L3ARN5TAT10N_PYTHON',
                     'gdsc':'L3ARN5TAT10N_GDSC'}
 
 visitor_codes = {}
+last_seen_chat_id = {}
 
 def randomise_visitor_codes():
     global visitor_codes
@@ -127,17 +128,22 @@ def process_email(message, name):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
+    global last_seen_chat_id
     if call.data == 'mentor':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter the passcode:', reply_markup=markup)
+        last_seen_chat_id[call.from_user.id] = call.message.chat.id
         bot.register_next_step_handler(msg, process_passcode)
     elif call.data == 'learner':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter your name:', reply_markup=markup)
+        last_seen_chat_id[call.from_user.id] = call.message.chat.id
         bot.register_next_step_handler(msg, process_name)
     elif call.data == 'back':
+        if call.from_user.id in last_seen_chat_id:
+            bot.clear_step_handler_by_chat_id(call.message.chat.id)
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
                    InlineKeyboardButton('Learner', callback_data='learner'))
