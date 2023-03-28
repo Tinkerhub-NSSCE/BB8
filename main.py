@@ -117,6 +117,24 @@ def visited_station(message):
     else:
         bot.send_message(message.chat.id, "Usage: /visited <VISTOR CODE>. Ask your mentor for the visitor code!")
 
+@bot.message_handler(commands=['cleardata'])
+def clear_participant_data(message):
+    tu_id = message.from_user.id
+    try:
+        participant_data = get_participant_data(tu_id)['fields']
+        if participant_data['type'] in mentor_passcodes:
+            markup = InlineKeyboardMarkup()
+            markup.row(InlineKeyboardButton('Yes', callback_data='yes'),
+                        InlineKeyboardButton('No', callback_data='no'))
+            bot.send_message(message.chat.id, "Are you sure you want to clear your current data from the database ⚠?", reply_markup=markup)
+        elif participant_data['type'] == 'learner':
+            markup = InlineKeyboardMarkup()
+            markup.row(InlineKeyboardButton('Yes', callback_data='yes'),
+                        InlineKeyboardButton('No', callback_data='no'))
+            bot.send_message(message.chat.id, "Are you sure you want to clear all your current data from the database? This will *also reset your progress* ⚠", reply_markup=markup)
+    except Exception as e:
+        bot.send_message(message.chat.id, "You need to be a *Mentor* or *Learner* to run this command! Use the /start command to register first")
+
 def process_passcode(message):
     # Code to check the passcode and proceed accordingly
     global last_seen_message, last_seen_chat_id
@@ -197,6 +215,15 @@ def callback_query(call):
         minutes_left = f"{int(1 - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='MARKDOWN', text=f"Hey there {station_name} mentor. Here's the visitor code for your station: **{code}**. This code expires in **{minutes_left}:{seconds_left}** minutes", reply_markup=markup)
+    elif call.data == 'yes':
+        try:
+            delete_last_record(call.from_user.id)
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, "Succesfully deleted all your data 🗑️. Run /start to register again.")
+        except:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+    elif call.data == 'no':
+        bot.delete_message(call.message.chat.id, call.message.message_id)
 
 if __name__ == '__main__':
     threading.Thread(target=bot.infinity_polling, name='bot_infinity_polling', daemon=True).start()

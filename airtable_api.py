@@ -42,18 +42,18 @@ def update_visited(visited:str, record_id:str):
     except Exception as e:
         return e
 
-def delete_duplicate_records(username:str):
-    try:
-        matches = table.all(formula=match({"discord_id":username}), sort=["-primary_key"])
-        duplicates = matches[1:]
-        duplicate_ids = [duplicate['id'] for duplicate in duplicates]
-        table.batch_delete(duplicate_ids)
-    except Exception as e:
-        return e
+# def delete_duplicate_records(tu_id:str):
+#     try:
+#         matches = table.all(formula=match({"tu_id":tu_id}), sort=["-primary_key"])
+#         duplicates = matches[1:]
+#         duplicate_ids = [duplicate['id'] for duplicate in duplicates]
+#         table.batch_delete(duplicate_ids)
+#     except Exception as e:
+#         return e
 
-def delete_last_record(username:str):
+def delete_last_record(tu_id:str):
     try:
-        match_record = table.first(formula=match({"discord_id":username}), sort=["-primary_key"])
+        match_record = table.first(formula=match({"tu_id":tu_id}), sort=["-primary_key"])
         match_id = match_record['id']
         table.delete(match_id)
     except Exception as e:
