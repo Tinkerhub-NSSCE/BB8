@@ -12,7 +12,7 @@ load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
 # Initialize the bot with your token
-bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN')
+bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=10)
 
 mentor_passcodes = {'python':'L3ARN5TAT10N_PYTHON',
                     'web':'L3ARN5TAT10N_WEB',
@@ -56,6 +56,19 @@ def deserialize_list(list):
         list = [x.strip("'") for x in list]
     else: list = []
     return list
+
+def progress_as_text(visited_list):
+    if len(visited_list) < 1:
+        text = "You haven't visited any stations yet 🚫"
+        return text
+    else:
+        text = "*Stations visited*\n\n"
+        for station_name in visitor_codes.keys():
+            status = station_name.capitalize()
+            if station_name in visited_list:
+                status += " ✅"
+            text = text + status + "\n"
+        return text
 
 # Handler for the "/start" command
 @bot.message_handler(commands=['start'])
@@ -111,7 +124,7 @@ def visited_station(message):
                 else:
                     bot.send_message(message.chat.id, "You need to be a *Learner* 🎓 to run this command!")
             except Exception as e:
-                bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to use the /visited command. Use the /start command to register first.")
+                bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command. Use the /start command to register first.")
         else:
             bot.send_message(message.chat.id, "Invalid visitor code ❌ Please ask your mentor for a valid one!")
     else:
@@ -134,6 +147,20 @@ def clear_participant_data(message):
             bot.send_message(message.chat.id, "Are you sure you want to clear all your current data from the database? This will *also reset your progress* ⚠", reply_markup=markup)
     except Exception as e:
         bot.send_message(message.chat.id, "You need to be a *Mentor* or *Learner* to run this command! Use the /start command to register first")
+
+@bot.message_handler(commands=['checkprogress'])
+def check_progress(message):
+    tu_id = message.from_user.id
+    try:
+        participant_data = get_participant_data(tu_id)['fields']
+        visited_list = deserialize_list(participant_data['visited'])
+        if participant_data['type'] == 'learner':
+            text = progress_as_text(visited_list)
+            bot.send_message(message.chat.id, text=text)
+        else:
+            bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command! Use the /start command to register first")
+    except Exception as e:
+        bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command! Use the /start command to register first")
 
 def process_passcode(message):
     # Code to check the passcode and proceed accordingly
