@@ -4,9 +4,11 @@ import telebot
 import secrets
 import threading, schedule
 import string
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import qrcode
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from dotenv import load_dotenv
 from airtable_api import *
+from io import BytesIO
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -69,6 +71,15 @@ def progress_as_text(visited_list):
                 status += " ✅"
             text = text + status + "\n"
         return text
+    
+def generate_qr(code):
+    qr_obj = qrcode.QRCode(version=1, box_size=10, border=2)
+    qr_obj.add_data(code)
+    qr_obj.make(fit=True)
+    qr_img = qr_obj.make_image(fill_color='black', back_color='white')
+    out = BytesIO()
+    qr_img.save(out, format='PNG')
+    return out
 
 # Handler for the "/start" command
 @bot.message_handler(commands=['start'])
@@ -175,12 +186,14 @@ def process_passcode(message):
 
         add_new_record(mentor_name, station_name, str(mentor_tu_id))
         code = visitor_codes[station_name]
+        qr_img = generate_qr(code)
+        qr_img.seek(0)
         time_left = time.time() - start_time
         minutes_left = f"{int(1 - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
-        msg = bot.send_message(chat_id=message.chat.id, parse_mode='MARKDOWN', text=f"Hey there {station_name} mentor. Here's the visitor code for your station: **{code}**. This code expires in **{minutes_left}:{seconds_left}** minutes", reply_markup=markup)
+        bot.send_photo(message.chat.id, qr_img, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes", reply_markup=markup)
         if message.from_user.id in last_seen_chat_id:
             bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
             last_seen_message.pop(message.from_user.id)
@@ -236,12 +249,15 @@ def callback_query(call):
         mentor_data = get_participant_data(mentor_tu_id)['fields']
         station_name = mentor_data['type']
         code = visitor_codes[station_name]
+        qr_img = generate_qr(code)
+        qr_img.seek(0)
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
         time_left = time.time() - start_time
         minutes_left = f"{int(1 - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
-        msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, parse_mode='MARKDOWN', text=f"Hey there {station_name} mentor. Here's the visitor code for your station: **{code}**. This code expires in **{minutes_left}:{seconds_left}** minutes", reply_markup=markup)
+        bot.edit_message_media(media=InputMediaPhoto(qr_img, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: {code} - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in {minutes_left}:{seconds_left} minutes"), chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+        msg = bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes", reply_markup=markup)
     elif call.data == 'yes':
         try:
             delete_last_record(call.from_user.id)
