@@ -27,6 +27,7 @@ mentor_passcodes = {'python':'L3ARN5TAT10N_PYTHON',
 
 visitor_codes = {}
 last_seen_chat_id = {}
+last_seen_message = {}
 
 def randomise_visitor_codes():
     global visitor_codes
@@ -94,6 +95,7 @@ def visited_station(message):
 
 def process_passcode(message):
     # Code to check the passcode and proceed accordingly
+    global last_seen_message, last_seen_chat_id
     passcode = message.text
     if passcode in mentor_passcodes.values():
         mentor_name = message.from_user.first_name
@@ -110,6 +112,10 @@ def process_passcode(message):
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
         msg = bot.send_message(chat_id=message.chat.id, parse_mode='MARKDOWN', text=f"Hey there {station_name} mentor. Here's the visitor code for your station: **{code}**. This code expires in **{minutes_left}:{seconds_left}** minutes", reply_markup=markup)
+        if message.from_user.id in last_seen_chat_id:
+            bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
+            last_seen_message.pop(message.from_user.id)
+            last_seen_chat_id.pop(message.from_user.id)
 
 def process_name(message):
     name = message.text
@@ -119,31 +125,39 @@ def process_name(message):
     bot.register_next_step_handler(msg, process_email, name)
 
 def process_email(message, name):
+    global last_seen_message, last_seen_chat_id
     name = name
     type = 'learner'
     email = message.text
     learner_tu_id = str(message.from_user.id)
     add_new_record(name, type, learner_tu_id, email)
     bot.send_message(message.chat.id, "Awesome! Now you're all set to start learning. Which station are you gonna visit first?")
+    if message.from_user.id in last_seen_chat_id:
+        bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
+        last_seen_message.pop(message.from_user.id)
+        last_seen_chat_id.pop(message.from_user.id)
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
-    global last_seen_chat_id
+    global last_seen_chat_id, last_seen_chat_id
     if call.data == 'mentor':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter the passcode:', reply_markup=markup)
         last_seen_chat_id[call.from_user.id] = call.message.chat.id
+        last_seen_message[call.from_user.id] = call.message.message_id
         bot.register_next_step_handler(msg, process_passcode)
     elif call.data == 'learner':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
         msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter your name:', reply_markup=markup)
         last_seen_chat_id[call.from_user.id] = call.message.chat.id
+        last_seen_message[call.from_user.id] = call.message.message_id
         bot.register_next_step_handler(msg, process_name)
     elif call.data == 'back':
         if call.from_user.id in last_seen_chat_id:
             bot.clear_step_handler_by_chat_id(call.message.chat.id)
+            last_seen_chat_id.pop(call.from_user.id)
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
                    InlineKeyboardButton('Learner', callback_data='learner'))
