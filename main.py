@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from airtable_api import *
 from io import BytesIO
 from configparser import ConfigParser
+from PIL import Image, ImageDraw, ImageFont
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -90,6 +91,32 @@ def generate_qr(code):
     qr_img.save(out, format='PNG')
     return out
 
+def generate_certificate(name:str):
+    certificate_template_path = f'{directory}/assets/certificate_template.png'
+    template = Image.open(certificate_template_path)
+    draw = ImageDraw.Draw(template)
+    font_name = 'ClashGrotesk-Semibold.ttf'
+    font = ImageFont.truetype(font=f'{directory}/assets/{font_name}', size=32)
+    text_length = draw.textlength(name, font)
+    color = (62, 62, 62)
+    x_pos = (template.width - text_length) / 2
+    y_pos = 269
+
+    if len(name) > 20:
+        name = name.split()
+        if len(name) > 1:
+            name = f"{name[0]} {name[1]}"
+            if len(name) > 21:
+                name = name.split()
+                name = f"{name[0]} {name[1][0].capitalize()}"
+        else:
+            name = str(name[0])
+    
+    draw.text((x_pos, y_pos), text=name, font=font, fill=color)
+    out = BytesIO()
+    template.save(out, format='PNG')
+    return out
+
 # Handler for the "/start" command
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -138,7 +165,11 @@ def visited_station(message):
                             bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁. {10 - len(visited_list)} stations left..")
                         else:
                             bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁.")
-                            bot.send_message(message.chat.id, f"Congratulations, you've visited all our stations 🎉. Here's a token of appreciation for your efforts!")
+                            cerificate = generate_certificate(learner_data['name'])
+                            cerificate.seek(0)
+                            markup = InlineKeyboardMarkup()
+                            markup.row(InlineKeyboardButton('⬇️ Download as PNG', callback_data='download'))
+                            bot.send_photo(message.chat.id, cerificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
                     else:
                         bot.send_message(message.chat.id, f"You've already visited the {station_name} station 👀. Please visit a different station.")
                 else:
@@ -284,6 +315,21 @@ def callback_query(call):
             bot.delete_message(call.message.chat.id, call.message.message_id)
     elif call.data == 'no':
         bot.delete_message(call.message.chat.id, call.message.message_id)
+    elif call.data == 'download':
+        try:
+            learner_data = get_participant_data(call.from_user.id)['fields']
+            visited_list = deserialize_list(learner_data['visited'])
+            if len(visited_list) == 10:
+                bot.edit_message_caption("Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", call.message.chat.id, call.message.message_id)
+                certificate = generate_certificate(learner_data['name'])
+                certificate.seek(0)
+                cert_name = learner_data['name'].split()[0].lower()
+                bot.send_document(call.message.chat.id, certificate, visible_file_name=f"{cert_name}_certificate.png")
+            else:
+                bot.edit_message_caption("Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", call.message.chat.id, call.message.message_id)
+        except:
+            pass
+
 
 if __name__ == '__main__':
     threading.Thread(target=bot.infinity_polling, name='bot_infinity_polling', daemon=True).start()

@@ -1,0 +1,16 @@
+[bot]
+python = xxxxxxxxxx
+web = xxxxxxxxxx
+mobile = xxxxxxxxxx
+blockchain = xxxxxxxxxx
+ai = xxxxxxxxxx
+resume = xxxxxxxxxx
+iot = xxxxxxxxxx
+pcb = xxxxxxxxxx
+3d = xxxxxxxxxx
+gdsc = xxxxxxxxxx
+
+[airtable]
+api_key = xxxxxxxxxx
+base_id = xxxxxxxxxx
+table_name = xxxxxxxxxx
