@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
-# Initialize the bot with your token
+# Initialize the bot
 bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=10)
 
 directory = os.path.dirname(os.path.realpath(__file__))
@@ -74,7 +74,7 @@ def progress_as_text(visited_list):
         text = "You haven't visited any stations yet 🚫"
         return text
     else:
-        text = "*Stations visited*\n\n"
+        text = "*<-- Stations visited -->*\n\n"
         for station_name in visitor_codes.keys():
             status = station_name.capitalize()
             if station_name in visited_list:
@@ -142,9 +142,9 @@ _No. of stations visited: {len(visited_list)}_
 If you wish to change any of your details, you can run /cleardata _(clears all your current data including your progress from our database)_ and then rerun the /start command''')
     except:
         markup = InlineKeyboardMarkup()
-        markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
-                InlineKeyboardButton('Learner', callback_data='learner'))
-        msg = bot.send_message(message.chat.id, "Welcome to Learing Stations @ Dyuksha '23 hosted TinkerHub NSSCE! I'm BB8 you're learning assistant. So are you a mentor or a learner?", reply_markup=markup)
+        markup.row(InlineKeyboardButton('🧑‍🏫 Mentor', callback_data='mentor'),
+                InlineKeyboardButton('🧑‍🎓 Learner', callback_data='learner'))
+        msg = bot.send_message(message.chat.id, "Welcome aboard *Learing Stations* @ Dyuksha '23 hosted by [TinkerHub NSSCE](https://linktr.ee/tinkerhubnssce), we're super excited to have you here 😁. I'm *BB8*, you're learning assistant. To get started you need to register yourself as a participant. So are you a *Mentor* or a *Learner*? \n\n_PS: I maybe a bit slow to respond at times, but I'm trying my best to reduce the latency, please bear with me if I seem slacking 🙂._", reply_markup=markup)
 
 @bot.message_handler(commands=['visited'])
 def visited_station(message):
@@ -171,7 +171,7 @@ def visited_station(message):
                             markup.row(InlineKeyboardButton('⬇️ Download as PNG', callback_data='download'))
                             bot.send_photo(message.chat.id, cerificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
                     else:
-                        bot.send_message(message.chat.id, f"You've already visited the {station_name} station 👀. Please visit a different station.")
+                        bot.send_message(message.chat.id, f"You've already visited the *{station_name}* station 👀. Please visit a different station.")
                 else:
                     bot.send_message(message.chat.id, "You need to be a *Learner* 🎓 to run this command!")
             except Exception as e:
@@ -179,7 +179,7 @@ def visited_station(message):
         else:
             bot.send_message(message.chat.id, "Invalid visitor code ❌ Please ask your mentor for a valid one!")
     else:
-        bot.send_message(message.chat.id, "Usage: /visited <VISTOR CODE>. Ask your mentor for the visitor code!")
+        bot.send_message(message.chat.id, "*Correct usage: /visited <VISTOR CODE>*. Ask your mentor 🧑‍🏫 for the visitor code!")
 
 @bot.message_handler(commands=['cleardata'])
 def clear_participant_data(message):
@@ -233,7 +233,7 @@ def process_passcode(message):
         seconds_left = f"{int(60 - time_left%60)}"
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
-        bot.send_photo(message.chat.id, qr_img, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes", reply_markup=markup)
+        bot.send_photo(message.chat.id, qr_img, caption=f"Hey there *{station_name}* mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh_ to get a new code.", reply_markup=markup)
         if message.from_user.id in last_mentor_request:
             last_mentor_request.pop(message.from_user.id)
         if message.from_user.id in last_seen_chat_id:
@@ -250,7 +250,7 @@ def process_name(message):
     name = message.text
     markup = InlineKeyboardMarkup()
     markup.row(InlineKeyboardButton('Go back', callback_data='back'))
-    msg = bot.send_message(message.chat.id, "Hi " + name + "! Please enter your email:")
+    msg = bot.send_message(message.chat.id, f"Okay *{name.split()[0]}*! Now tell me your email id. We'll use this for any further communication 📣 regarding our event")
     bot.register_next_step_handler(msg, process_email, name)
 
 def process_email(message, name):
@@ -260,7 +260,16 @@ def process_email(message, name):
     email = message.text
     learner_tu_id = str(message.from_user.id)
     add_new_record(name, type, learner_tu_id, email)
-    bot.send_message(message.chat.id, "Awesome! Now you're all set to start learning. Which station are you gonna visit first?")
+    bot.send_message(message.chat.id, '''_That's all! Now you're all set to start learning 🏁. Here's what you need to do next:-_
+
+- Visit any station you like, take all the time you need to learn about the specific domain.
+- At the end of your learning session, the mentor at the station will give you a *visitor code* - a 6 digit alphanumeric code.
+- Run the command /visited *<VISITOR CODE>* to mark the station as visited.
+- You can either type the *vistor code* manually or scan the QR code displayed to copy it directly.
+- Run the command /checkprogress anytime to check which stations you have/haven't visited so far.
+- Finally, if you've visited all the stations I'll send you a cool *e-certificate* 🎁, that you can later showcase on your socials!
+
+_So have you decided which station you're gonna visit first 👀?_''')
     if message.from_user.id in last_seen_chat_id:
         bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
         last_seen_message.pop(message.from_user.id)
@@ -272,7 +281,7 @@ def callback_query(call):
     if call.data == 'mentor':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
-        msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter the passcode:', reply_markup=markup)
+        msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="Please enter your mentor passcode 🔑. Not a mentor? Hit *Go Back* and select the *Learner* option.", reply_markup=markup)
         last_seen_chat_id[call.from_user.id] = call.message.chat.id
         last_seen_message[call.from_user.id] = call.message.message_id
         last_mentor_request[call.from_user.id] = [call.message.chat.id, call.message.message_id]
@@ -280,7 +289,7 @@ def callback_query(call):
     elif call.data == 'learner':
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('Go back', callback_data='back'))
-        msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Please enter your name:', reply_markup=markup)
+        msg = bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text='Hello there learner! What is your name?\n\n_Please type in your full name. This will be later on used to generate your certificate 📜_', reply_markup=markup)
         last_seen_chat_id[call.from_user.id] = call.message.chat.id
         last_seen_message[call.from_user.id] = call.message.message_id
         bot.register_next_step_handler(msg, process_name)
@@ -289,9 +298,9 @@ def callback_query(call):
             bot.clear_step_handler_by_chat_id(call.message.chat.id)
             last_seen_chat_id.pop(call.from_user.id)
         markup = InlineKeyboardMarkup()
-        markup.row(InlineKeyboardButton('Mentor', callback_data='mentor'),
-                   InlineKeyboardButton('Learner', callback_data='learner'))
-        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="Welcome to Learing Stations @ Dyuksha '23 hosted TinkerHub NSSCE! I'm BB8 you're learning assistant. So are you a mentor or a learner?", reply_markup=markup)
+        markup.row(InlineKeyboardButton('🧑‍🏫 Mentor', callback_data='mentor'),
+                   InlineKeyboardButton('🧑‍🎓 Learner', callback_data='learner'))
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="Welcome aboard *Learing Stations* @ Dyuksha '23 hosted by [TinkerHub NSSCE](https://linktr.ee/tinkerhubnssce), we're super excited to have you here 😁. I'm *BB8*, you're learning assistant. To get started you need to register yourself as a participant. So are you a *Mentor* or a *Learner*? \n\n_PS: I maybe a bit slow to respond at times, but I'm trying my best to reduce the latency, please bear with me if I seem slacking 🙂._", reply_markup=markup)
     elif call.data == 'refresh':
         mentor_tu_id = str(call.from_user.id)
         mentor_data = get_participant_data(mentor_tu_id)['fields']
@@ -304,8 +313,8 @@ def callback_query(call):
         time_left = time.time() - start_time
         minutes_left = f"{int(1 - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
-        bot.edit_message_media(media=InputMediaPhoto(qr_img, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: {code} - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in {minutes_left}:{seconds_left} minutes"), chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
-        msg = bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=f"Hey there {station_name} mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes", reply_markup=markup)
+        bot.edit_message_media(media=InputMediaPhoto(qr_img, caption=f"Here's the new visitor code for your station: {code} - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in {minutes_left}:{seconds_left} minutes, hit Refresh to get a new code."), chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+        msg = bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=f"Here's the new visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh_ to get a new code.", reply_markup=markup)
     elif call.data == 'yes':
         try:
             delete_last_record(call.from_user.id)
