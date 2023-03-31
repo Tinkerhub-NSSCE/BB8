@@ -6,12 +6,15 @@ import threading, schedule
 import string
 import qrcode
 import json
+import logging
+import pytz
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from dotenv import load_dotenv
 from airtable_api import *
 from io import BytesIO
 from configparser import ConfigParser
 from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -25,8 +28,25 @@ randomise_interval = int(config.get('bot','randomise_interval'))
 admin_list = json.loads(config.get('bot','admin_list'))
 station_names = json.loads(config.get('stations','station_names'))
 
-# Initialize the bot
+# initialize the bot
 bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=num_threads)
+
+# setup logging
+log_format = logging.Formatter('%(asctime)s %(levelname)s   %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+bb8_stream_handler = logging.StreamHandler()
+bb8_stream_handler.setFormatter(log_format)
+bb8_logger = logging.getLogger(__name__)
+bb8_logger.addHandler(bb8_stream_handler)
+bb8_logger.setLevel(logging.INFO)
+
+local_tz = pytz.timezone('Asia/Calcutta')
+
+def loggable_dt(dt:datetime):
+  local_dt = dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
+  format_string = "%d-%m-%Y | %I:%M:%S %p"
+  lg_dt = local_dt.strftime(format_string)
+  return lg_dt
 
 # GLOBAL DICTS
 
@@ -46,7 +66,7 @@ def randomise_visitor_codes():
         new_code = ''.join(secrets.choice(string.ascii_uppercase + string.ascii_lowercase + string.digits) for _ in range(6))
         visitor_codes[key] = new_code
     global start_time
-    print(visitor_codes)
+    bb8_logger.info(f"New visitor codes generated at {loggable_dt(datetime.utcnow())}")
     start_time = time.time()
         
 schedule.every(randomise_interval).seconds.do(randomise_visitor_codes)
@@ -184,6 +204,7 @@ def visited_station(message):
                             markup = InlineKeyboardMarkup()
                             markup.row(InlineKeyboardButton('📥 Download as PNG', callback_data='download'))
                             bot.send_photo(message.chat.id, certificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
+                            bb8_logger.info(f"{learner_data['name']} completed visiting all stations at {loggable_dt(datetime.utcnow())}")
                     else:
                         bot.send_message(message.chat.id, f"You've already visited the *{station_name}* station 👀. Please visit a different station.")
                 else:
@@ -240,6 +261,7 @@ def list_codes(message):
         for station_name in visitor_codes:
             text += f"{station_name}: {visitor_codes[station_name]}\n"
         bot.send_message(message.chat.id, text)
+        bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
 
 @bot.message_handler(commands=['getinfo'])
 def get_info(message):
@@ -264,6 +286,7 @@ _User ID: {participant_data['tu_id']}_
 _Email: {participant_data['email']}_
 _No. of stations visited: {participant_data['visited_num']}_'''
                 bot.send_message(message.chat.id, text)
+                bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
             except Exception as e:
                 bot.send_message(message.chat.id, "Participant not found ❌")
 
@@ -278,6 +301,7 @@ def regenerate_cert(message):
                 if participant_data['type'] == 'learner':
                     if participant_data['visited_num'] < 10:
                         bot.send_message(message.chat.id, "Learner has not visited all the stations!")
+                        bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
                     else:
                         certificate = generate_certificate(participant_data['name'])
                         certificate.seek(0)
@@ -285,10 +309,13 @@ def regenerate_cert(message):
                         bot.send_photo(message.chat.id, certificate, caption=f"Certificate for *{cert_name.capitalize()}* has been regenerated on request ☑️.")
                         certificate.seek(0)
                         bot.send_document(message.chat.id, certificate, visible_file_name=f"{cert_name}_certificate.png")
+                        bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
                 else:
                     bot.send_message(message.chat.id, "Participant is not a learner ❌")
+                    bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
             except Exception as e:
                 bot.send_message(message.chat.id, "Participant not found ❌")
+                bb8_logger.info(f"{message.from_user.full_name} has used an admin command at {loggable_dt(datetime.utcnow())}")
 
 # NEXT STEP HANDLERS
 
@@ -313,6 +340,7 @@ def process_passcode(message):
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('🔄 Refresh Code', callback_data='refresh'))
         bot.send_photo(message.chat.id, qr_img, caption=f"Hey there *{station_name}* mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh Code_ to get a new code.", reply_markup=markup)
+        bb8_logger.info(f"{message.from_user.full_name} has registered as a Mentor at {loggable_dt(datetime.utcnow())}")
         if message.from_user.id in last_mentor_request:
             last_mentor_request.pop(message.from_user.id)
         if message.from_user.id in last_seen_chat_id:
@@ -349,6 +377,7 @@ def process_email(message, name):
 - Finally, if you've visited all the stations I'll send you a cool *e-certificate* 🎁, that you can later showcase on your socials!
 
 _So have you decided which station you're gonna visit first 👀?_''')
+    bb8_logger.info(f"{name} has registered as a Learner at {loggable_dt(datetime.utcnow())}")
     if message.from_user.id in last_seen_chat_id:
         bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
         last_seen_message.pop(message.from_user.id)
@@ -401,6 +430,7 @@ def callback_query(call):
             delete_last_record(call.from_user.id)
             bot.delete_message(call.message.chat.id, call.message.message_id)
             bot.send_message(call.message.chat.id, "Succesfully deleted all your data 🗑️. Run /start to register again.")
+            bb8_logger.info(f"{call.from_user.full_name} has deleted all their data at {loggable_dt(datetime.utcnow())}")
         except:
             bot.delete_message(call.message.chat.id, call.message.message_id)
     elif call.data == 'no':
@@ -423,6 +453,7 @@ def callback_query(call):
 
 if __name__ == '__main__':
     threading.Thread(target=bot.infinity_polling, name='bot_infinity_polling', daemon=True).start()
+    bb8_logger.info(f"{bot.user.full_name} is logged in as @{bot.user.username}")
     randomise_visitor_codes()
     while True:
         schedule.run_pending()

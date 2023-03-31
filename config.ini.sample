@@ -1,4 +1,10 @@
 [bot]
+num_threads = xx
+randomise_interval = xx
+admin_list = [xxxxxxx,xxxxxxx]
+
+[stations]
+station_names = ["python", "web", "mobile", "blockchain", "ai", "resume", "iot", "pcb", "3d", "gdsc"]
 python = xxxxxxxxxx
 web = xxxxxxxxxx
 mobile = xxxxxxxxxx
