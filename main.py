@@ -28,6 +28,8 @@ station_names = json.loads(config.get('stations','station_names'))
 # Initialize the bot
 bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=num_threads)
 
+# GLOBAL DICTS
+
 mentor_passcodes = {}
 for station_name in station_names:
     mentor_passcodes[station_name] = str(config.get('stations', station_name))
@@ -35,6 +37,8 @@ visitor_codes = {}
 last_seen_chat_id = {}
 last_seen_message = {}
 last_mentor_request = {}
+
+# HELPER FUNCTIONS
 
 def randomise_visitor_codes():
     global visitor_codes
@@ -104,10 +108,7 @@ def generate_certificate(name:str):
     draw = ImageDraw.Draw(template)
     font_name = 'ClashGrotesk-Semibold.ttf'
     font = ImageFont.truetype(font=f'{directory}/assets/{font_name}', size=32)
-    text_length = draw.textlength(name, font)
     color = (62, 62, 62)
-    x_pos = (template.width - text_length) / 2
-    y_pos = 269
 
     if len(name) > 20:
         name = name.split()
@@ -118,13 +119,18 @@ def generate_certificate(name:str):
                 name = f"{name[0]} {name[1][0].capitalize()}"
         else:
             name = str(name[0])
+
+    text_length = draw.textlength(name, font)
+    x_pos = (template.width - text_length) / 2
+    y_pos = 269
     
     draw.text((x_pos, y_pos), text=name, font=font, fill=color)
     out = BytesIO()
     template.save(out, format='PNG')
     return out
 
-# Handler for the "/start" command
+# GENERAL COMMANDS
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     try:
@@ -156,7 +162,7 @@ If you wish to change any of your details, you can run /cleardata _(clears all y
 
 @bot.message_handler(commands=['visited'])
 def visited_station(message):
-    args = message.text.split()
+    args = message.text.split(' ')
     if len(args) == 2:
         code = args[1]
         if validate_visitor_codes(code):
@@ -173,11 +179,11 @@ def visited_station(message):
                             bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the *{station_name}* station 🥁. {10 - len(visited_list)} stations left..")
                         else:
                             bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the *{station_name}* station 🥁.")
-                            cerificate = generate_certificate(learner_data['name'])
-                            cerificate.seek(0)
+                            certificate = generate_certificate(learner_data['name'])
+                            certificate.seek(0)
                             markup = InlineKeyboardMarkup()
                             markup.row(InlineKeyboardButton('📥 Download as PNG', callback_data='download'))
-                            bot.send_photo(message.chat.id, cerificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
+                            bot.send_photo(message.chat.id, certificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
                     else:
                         bot.send_message(message.chat.id, f"You've already visited the *{station_name}* station 👀. Please visit a different station.")
                 else:
@@ -221,6 +227,70 @@ def check_progress(message):
             bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command! Use the /start command to register first")
     except Exception as e:
         bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command! Use the /start command to register first")
+
+# ADMIN ONLY COMMANDS
+
+@bot.message_handler(commands=['listcodes'])
+def list_codes(message):
+    if message.from_user.id in admin_list:
+        time_left = time.time() - start_time
+        minutes_left = f"{int((randomise_interval//60 - 1) - time_left//60)}"
+        seconds_left = f"{int(60 - time_left%60)}"
+        text = f"_Time Remaining: {minutes_left}:{seconds_left}_\n\n"
+        for station_name in visitor_codes:
+            text += f"{station_name}: {visitor_codes[station_name]}\n"
+        bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['getinfo'])
+def get_info(message):
+    if message.from_user.id in admin_list:
+        args = message.text.split(' ')
+        if len(args) == 2:
+            primary_key = int(args[1])
+            try:
+                participant_data = get_participant_data_by_key(primary_key)['fields']
+                if participant_data['type'] in station_names:
+                    text = f'''*Participant Data*
+
+_Name: {participant_data['name']}_
+_Type: {participant_data['type']}_
+_User ID: {participant_data['tu_id']}_'''
+                elif participant_data['type'] == 'learner':
+                    text = f'''*Participant Data*
+
+_Name: {participant_data['name']}_
+_Type: {participant_data['type']}_
+_User ID: {participant_data['tu_id']}_
+_Email: {participant_data['email']}_
+_No. of stations visited: {participant_data['visited_num']}_'''
+                bot.send_message(message.chat.id, text)
+            except Exception as e:
+                bot.send_message(message.chat.id, "Participant not found ❌")
+
+@bot.message_handler(commands=['regencert'])
+def regenerate_cert(message):
+    if message.from_user.id in admin_list:
+        args = message.text.split(' ')
+        if len(args) == 2:
+            primary_key = args[1]
+            try:
+                participant_data = get_participant_data_by_key(primary_key)['fields']
+                if participant_data['type'] == 'learner':
+                    if participant_data['visited_num'] < 10:
+                        bot.send_message(message.chat.id, "Learner has not visited all the stations!")
+                    else:
+                        certificate = generate_certificate(participant_data['name'])
+                        certificate.seek(0)
+                        cert_name = participant_data['name'].split()[0].lower()
+                        bot.send_photo(message.chat.id, certificate, caption=f"Certificate for *{cert_name.capitalize()}* has been regenerated on request ☑️.")
+                        certificate.seek(0)
+                        bot.send_document(message.chat.id, certificate, visible_file_name=f"{cert_name}_certificate.png")
+                else:
+                    bot.send_message(message.chat.id, "Participant is not a learner ❌")
+            except Exception as e:
+                bot.send_message(message.chat.id, "Participant not found ❌")
+
+# NEXT STEP HANDLERS
 
 def process_passcode(message):
     # Code to check the passcode and proceed accordingly
@@ -283,6 +353,8 @@ _So have you decided which station you're gonna visit first 👀?_''')
         bot.delete_message(last_seen_chat_id[message.from_user.id], last_seen_message[message.from_user.id])
         last_seen_message.pop(message.from_user.id)
         last_seen_chat_id.pop(message.from_user.id)
+
+# CALLBACK QUERY HANDLER
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
@@ -347,6 +419,7 @@ def callback_query(call):
         except:
             pass
 
+# RUN BOT
 
 if __name__ == '__main__':
     threading.Thread(target=bot.infinity_polling, name='bot_infinity_polling', daemon=True).start()

@@ -37,6 +37,13 @@ def get_participant_data(tu_id:str):
         return e
     return participant
 
+def get_participant_data_by_key(primary_key:int):
+    try:
+        participant = table.first(formula=match({"primary_key":primary_key}), sort=["-primary_key"])
+    except Exception as e:
+        return e
+    return participant
+
 def update_visited(visited:str, visted_num:int, record_id:str):
     try:
         table.update(record_id, {"visited":visited,
