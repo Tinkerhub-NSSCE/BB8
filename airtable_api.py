@@ -13,12 +13,13 @@ table_name = str(config.get("airtable", "table_name"))
 
 table = Table(api_key, base_id, table_name)
 
-def add_new_record(name:str, type:str, tu_id:str, email:str = "", visited:str = "[]"):
+def add_new_record(name:str, type:str, tu_id:str, email:str = None, visited:str = None, visited_num:int = None):
     data = {'name': name,
             'type':type,
             'tu_id':tu_id,
             'email':email,
-            'visited':visited}
+            'visited':visited,
+            'visited_num':visited_num}
     table.create(data)
 
 def get_record_id(tu_id:str):
@@ -36,9 +37,10 @@ def get_participant_data(tu_id:str):
         return e
     return participant
 
-def update_visited(visited:str, record_id:str):
+def update_visited(visited:str, visted_num:int, record_id:str):
     try:
-        table.update(record_id, {"visited":visited})
+        table.update(record_id, {"visited":visited,
+                                 "visited_num":visted_num})
     except Exception as e:
         return e
 

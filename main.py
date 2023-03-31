@@ -5,6 +5,7 @@ import secrets
 import threading, schedule
 import string
 import qrcode
+import json
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from dotenv import load_dotenv
 from airtable_api import *
@@ -15,27 +16,21 @@ from PIL import Image, ImageDraw, ImageFont
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
-# Initialize the bot
-bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=10)
-
 directory = os.path.dirname(os.path.realpath(__file__))
 config = ConfigParser()
 config.read(f'{directory}/config.ini')
 
-mentor_passcodes = {'python':'',
-                    'web':'',
-                    'mobile':'',
-                    'blockchain':'',
-                    'ai':'',
-                    'resume':'',
-                    'iot':'',
-                    'pcb':'',
-                    '3d':'',
-                    'gdsc':''}
+num_threads = int(config.get('bot','num_threads'))
+randomise_interval = int(config.get('bot','randomise_interval'))
+admin_list = json.loads(config.get('bot','admin_list'))
+station_names = json.loads(config.get('stations','station_names'))
 
-for station_name in mentor_passcodes:
-    mentor_passcodes[station_name] = str(config.get('bot', station_name))
+# Initialize the bot
+bot = telebot.TeleBot(TOKEN, parse_mode='MARKDOWN', num_threads=num_threads)
 
+mentor_passcodes = {}
+for station_name in station_names:
+    mentor_passcodes[station_name] = str(config.get('stations', station_name))
 visitor_codes = {}
 last_seen_chat_id = {}
 last_seen_message = {}
@@ -50,7 +45,7 @@ def randomise_visitor_codes():
     print(visitor_codes)
     start_time = time.time()
         
-schedule.every(120).seconds.do(randomise_visitor_codes)
+schedule.every(randomise_interval).seconds.do(randomise_visitor_codes)
 
 def validate_visitor_codes(code):
     global visitor_codes
@@ -69,12 +64,24 @@ def deserialize_list(list):
     else: list = []
     return list
 
-def progress_as_text(visited_list):
+def progress_as_text(visited_list, participant_data):
     if len(visited_list) < 1:
-        text = "You haven't visited any stations yet 🚫"
+        text = f'''_Name: {participant_data['name']}_
+_Email: {participant_data['email']}_
+_Participant ID: {participant_data['primary_key']}_
+
+*Stations visited:*
+-------------------------
+_You haven't visited any stations yet 🚫_'''
         return text
     else:
-        text = "*<-- Stations visited -->*\n\n"
+        text = f'''_Name: {participant_data['name']}_
+_Email: {participant_data['email']}_
+_Participant ID: {participant_data['primary_key']}_
+
+*Stations visited:*
+-------------------------
+'''
         for station_name in visitor_codes.keys():
             status = station_name.capitalize()
             if station_name in visited_list:
@@ -122,13 +129,13 @@ def generate_certificate(name:str):
 def send_welcome(message):
     try:
         participant_data = get_participant_data(message.from_user.id)['fields']
-        visited_list = deserialize_list(participant_data['visited'])
         if participant_data['type'] in mentor_passcodes:
             bot.send_message(message.chat.id, f'''You have already completed registration as a *Mentor* 🧑‍🏫
 
 *Here are your details:*
 _Name: {participant_data['name']}_
 _Station name: {participant_data['type'].capitalize()}_
+_Participant ID: {participant_data['primary_key']}_
 
 If you want to move to a different station, you can run /cleardata command to clear your current data from the database.''')
         elif participant_data['type'] == 'learner':
@@ -137,10 +144,11 @@ If you want to move to a different station, you can run /cleardata command to cl
 *Here are your details:*
 _Name: {participant_data['name']}_
 _Email: {participant_data['email']}_
-_No. of stations visited: {len(visited_list)}_
+_Participant ID: {participant_data['primary_key']}_
+_No. of stations visited: {participant_data['visited_num']}_
 
 If you wish to change any of your details, you can run /cleardata _(clears all your current data including your progress from our database)_ and then rerun the /start command''')
-    except:
+    except Exception as e:
         markup = InlineKeyboardMarkup()
         markup.row(InlineKeyboardButton('🧑‍🏫 Mentor', callback_data='mentor'),
                 InlineKeyboardButton('🧑‍🎓 Learner', callback_data='learner'))
@@ -156,19 +164,19 @@ def visited_station(message):
             try:
                 record_id = get_record_id(message.from_user.id)
                 learner_data = get_participant_data(message.from_user.id)['fields']
-                visited_list = deserialize_list(learner_data['visited'])
                 if learner_data['type'] == 'learner':
+                    visited_list = deserialize_list(learner_data['visited'])
                     if station_name not in visited_list:
                         visited_list.append(station_name)
-                        update_visited(str(visited_list), record_id)
+                        update_visited(str(visited_list), len(visited_list), record_id)
                         if len(visited_list) < 10:
-                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁. {10 - len(visited_list)} stations left..")
+                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the *{station_name}* station 🥁. {10 - len(visited_list)} stations left..")
                         else:
-                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the {station_name} station 🥁.")
+                            bot.send_message(message.chat.id, f"Yaay! you've succesfully visited the *{station_name}* station 🥁.")
                             cerificate = generate_certificate(learner_data['name'])
                             cerificate.seek(0)
                             markup = InlineKeyboardMarkup()
-                            markup.row(InlineKeyboardButton('⬇️ Download as PNG', callback_data='download'))
+                            markup.row(InlineKeyboardButton('📥 Download as PNG', callback_data='download'))
                             bot.send_photo(message.chat.id, cerificate, caption="Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", reply_markup=markup)
                     else:
                         bot.send_message(message.chat.id, f"You've already visited the *{station_name}* station 👀. Please visit a different station.")
@@ -192,10 +200,11 @@ def clear_participant_data(message):
                         InlineKeyboardButton('No', callback_data='no'))
             bot.send_message(message.chat.id, "Are you sure you want to clear your current data from the database ⚠?", reply_markup=markup)
         elif participant_data['type'] == 'learner':
-            markup = InlineKeyboardMarkup()
-            markup.row(InlineKeyboardButton('Yes', callback_data='yes'),
-                        InlineKeyboardButton('No', callback_data='no'))
-            bot.send_message(message.chat.id, "Are you sure you want to clear all your current data from the database? This will *also reset your progress* ⚠", reply_markup=markup)
+            if participant_data['visited_num'] < 10:
+                markup = InlineKeyboardMarkup()
+                markup.row(InlineKeyboardButton('Yes', callback_data='yes'),
+                            InlineKeyboardButton('No', callback_data='no'))
+                bot.send_message(message.chat.id, "Are you sure you want to clear all your current data from the database? This will *also reset your progress* ⚠", reply_markup=markup)
     except Exception as e:
         bot.send_message(message.chat.id, "You need to be a *Mentor* or *Learner* to run this command! Use the /start command to register first")
 
@@ -204,9 +213,9 @@ def check_progress(message):
     tu_id = message.from_user.id
     try:
         participant_data = get_participant_data(tu_id)['fields']
-        visited_list = deserialize_list(participant_data['visited'])
         if participant_data['type'] == 'learner':
-            text = progress_as_text(visited_list)
+            visited_list = deserialize_list(participant_data['visited'])
+            text = progress_as_text(visited_list, participant_data)
             bot.send_message(message.chat.id, text=text)
         else:
             bot.send_message(message.chat.id, "You need to register as a *Learner* 🎓 to run this command! Use the /start command to register first")
@@ -229,11 +238,11 @@ def process_passcode(message):
         qr_img = generate_qr(code)
         qr_img.seek(0)
         time_left = time.time() - start_time
-        minutes_left = f"{int(1 - time_left//60)}"
+        minutes_left = f"{int((randomise_interval//60 - 1) - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
         markup = InlineKeyboardMarkup()
-        markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
-        bot.send_photo(message.chat.id, qr_img, caption=f"Hey there *{station_name}* mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh_ to get a new code.", reply_markup=markup)
+        markup.row(InlineKeyboardButton('🔄 Refresh Code', callback_data='refresh'))
+        bot.send_photo(message.chat.id, qr_img, caption=f"Hey there *{station_name}* mentor. Here's the visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh Code_ to get a new code.", reply_markup=markup)
         if message.from_user.id in last_mentor_request:
             last_mentor_request.pop(message.from_user.id)
         if message.from_user.id in last_seen_chat_id:
@@ -259,7 +268,7 @@ def process_email(message, name):
     type = 'learner'
     email = message.text
     learner_tu_id = str(message.from_user.id)
-    add_new_record(name, type, learner_tu_id, email)
+    add_new_record(name, type, learner_tu_id, email, "[]", 0)
     bot.send_message(message.chat.id, '''_That's all! Now you're all set to start learning 🏁. Here's what you need to do next:-_
 
 - Visit any station you like, take all the time you need to learn about the specific domain.
@@ -309,12 +318,12 @@ def callback_query(call):
         qr_img = generate_qr(code)
         qr_img.seek(0)
         markup = InlineKeyboardMarkup()
-        markup.row(InlineKeyboardButton('Refresh Code', callback_data='refresh'))
+        markup.row(InlineKeyboardButton('🔄 Refresh Code', callback_data='refresh'))
         time_left = time.time() - start_time
-        minutes_left = f"{int(1 - time_left//60)}"
+        minutes_left = f"{int((randomise_interval//60 - 1) - time_left//60)}"
         seconds_left = f"{int(60 - time_left%60)}"
-        bot.edit_message_media(media=InputMediaPhoto(qr_img, caption=f"Here's the new visitor code for your station: {code} - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in {minutes_left}:{seconds_left} minutes, hit Refresh to get a new code."), chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
-        msg = bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=f"Here's the new visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh_ to get a new code.", reply_markup=markup)
+        bot.edit_message_media(media=InputMediaPhoto(qr_img, caption=f"Here's the new visitor code for your station: {code} - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in {minutes_left}:{seconds_left} minutes, hit Refresh Code to get a new code."), chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=markup)
+        msg = bot.edit_message_caption(chat_id=call.message.chat.id, message_id=call.message.message_id, caption=f"Here's the new visitor code for your station: *{code}* - the visitors may either type this code manually or scan the above qr to copy the code. This code expires in *{minutes_left}:{seconds_left}* minutes, hit _Refresh Code_ to get a new code.", reply_markup=markup)
     elif call.data == 'yes':
         try:
             delete_last_record(call.from_user.id)
@@ -327,8 +336,7 @@ def callback_query(call):
     elif call.data == 'download':
         try:
             learner_data = get_participant_data(call.from_user.id)['fields']
-            visited_list = deserialize_list(learner_data['visited'])
-            if len(visited_list) == 10:
+            if learner_data['visited_num'] == 10:
                 bot.edit_message_caption("Congratulations, you've visited all our stations 🎉. Here's a small token of appreciation for your efforts!", call.message.chat.id, call.message.message_id)
                 certificate = generate_certificate(learner_data['name'])
                 certificate.seek(0)
