@@ -82,7 +82,7 @@ $ python main.py
 
 ## What's under the hood?
 You can find all the required dependencies in the `requirements.txt` file. However here's an overview of the major libraries/tools we've used to create **BB8**
-- [discordpy](https://discordpy.readthedocs.io/en/stable/)
+- [pyTelegramBotAPI](https://pytba.readthedocs.io/en/latest/)
 - [schedule](https://schedule.readthedocs.io/en/stable/)
 - [pyairtable](https://pyairtable.readthedocs.io/en/latest/)
 - [qrcode](https://pypi.org/project/qrcode/)
